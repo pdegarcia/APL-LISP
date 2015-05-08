@@ -7,77 +7,62 @@
  	 	:reader tensor-rank)
  	 (shape
  	 	:initarg :shape
- 	 	:reader tensor-shape)))
+ 	 	:reader tensor-shape)
+ 	 (size
+ 	 	:initarg :size
+ 	 	:reader tensor-size)))
 
 (defclass scalar (tensor) ())
 
+(defun tensor-construct (type values rank shape size)
+	(make-instance type :values values :rank rank :shape shape :size size))
+
+(defun tensor-copy-simple (tensor)
+	(let ((type 'tensor))
+		(if (eq (tensor-rank tensor) 0)		
+			(setf type 'scalar))
+		(make-instance type :values (make-array (tensor-shape tensor)) :rank (tensor-rank tensor) :shape (tensor-shape tensor) :size (tensor-size tensor))))
+
 (defun s (arg)
-	(make-instance 'scalar :values (make-array nil :initial-contents arg)
-				   		           :rank 0
-				                 :shape '()))
+	(tensor-construct 'scalar (make-array nil :initial-contents arg) 0 '() 1))
 
 (defun v (&rest args)
- 	(let ((shape (list (list-length args))))
- 		(make-instance 'tensor :values (make-array shape :initial-contents args)
- 					 		             :rank 1
- 					 		             :shape shape)))
+ 	(let* ((s (list-length args))
+ 		   (shape (list s)))			
+ 		(tensor-construct 'tensor (make-array shape :initial-contents args) 1 shape s)))
 
 
-;(defmethod print-object ((object tensor) stream)
-;	(tensor-print stream object (tensor-shape object) '()))
+; (defmethod print-object ((object tensor) stream)
+; 	(tensor-print stream object (tensor-shape object) '()))
 
-;(defun tensor-print (stream tensor shape indexes)
-;	(let ((cur-dimension (list-length shape)))
-;    (if (eq shape nil)
-;  		(progn
-;        (format stream "~a" (apply #'aref (tensor-values tensor) indexes))
-;        (if (not (eq (car (last indexes)) (- (car (last (tensor-shape tensor))) 1)))
-;          (format stream " ")))
-;  		(progn (dotimes (dim (car shape))
-;  			   		(tensor-print stream tensor (cdr shape) (append indexes (list dim))))
-;  				(if (not (eq (tensor-rank tensor) cur-dimension))
-;  					(if (not (eq (car (last indexes)) (- (car (last shape)) 1)))
-;  						(dotimes (r cur-dimension)
-;  							(format stream "~%"))))))))
+; (defun tensor-print (stream tensor shape indexes)
+; 	(let ((cur-dimension (list-length shape)))
+;     (if (eq shape nil)
+;   		(progn
+;         (format stream "~a" (apply #'aref (tensor-values tensor) indexes))
+;         (if (not (eq (car (last indexes)) (- (car (last (tensor-shape tensor))) 1)))
+;           (format stream " ")))
+;   		(progn (dotimes (dim (car shape))
+;   			   		(tensor-print stream tensor (cdr shape) (append indexes (list dim))))
+;   				(if (not (eq (tensor-rank tensor) cur-dimension))
+;   					(if (not (eq (car (last indexes)) (- (car (last shape)) 1)))
+;   						(dotimes (r cur-dimension)
+;   							(format stream "~%"))))))))
 
-(defun tensor-scalar? (tensor)
-  (if (eq (tensor-rank tensor) 0)
-      T
-      nil))
+(defun tensor-displace (tensor)
+ 	(make-array (tensor-size tensor) :displaced-to (tensor-values tensor)))
 
-(defun tensor-apply-monadic (tensor new-tensor function shape indexes)
-  (if (eq shape nil)
-      (setf (apply #'aref (tensor-values new-tensor) indexes) (funcall function (apply #'aref (tensor-values tensor) indexes)))
-      (dotimes (dim (car shape))
-        (tensor-apply-monadic tensor new-tensor function (cdr shape) (append indexes (list dim)))))
-  new-tensor)
+(defun tensor-apply (function &rest tensors)
+	(let* ((displaced-values '())
+		  (result (tensor-copy-simple (first tensors)))	
+		  (result-displaced (tensor-displace result)))
+		(progn 
+			(dolist (tensor tensors) 
+				(setf displaced-values (append displaced-values (list (tensor-displace tensor)))))
+			(apply #'map-into result-displaced function displaced-values))
+	result))
 
-(defgeneric tensor-apply-dyadic (tensor1 tensor2 new-tensor function shape indexes))
-
-(defmethod tensor-apply-dyadic ((tensor1 tensor) (tensor2 tensor) new-tensor function shape indexes)
-  (assert (and (eq (tensor-rank tensor1) (tensor-rank tensor2))
-               (equal (tensor-shape tensor1) (tensor-shape tensor2)))
-               (tensor1 tensor2)
-               "ERROR: Argument tensors do not have the same size and shape.")
-  (if (eq shape nil)
-      (setf (apply #'aref (tensor-values new-tensor) indexes) (funcall function (apply #'aref (tensor-values tensor1) indexes) (apply #'aref (tensor-values tensor2) indexes)))
-      (dotimes (dim (car shape))
-        (tensor-apply-dyadic tensor1 tensor2 new-tensor function (cdr shape) (append indexes (list dim)))))
-  new-tensor)
-
-(defmethod tensor-apply-dyadic ((tensor1 scalar) (tensor2 tensor) new-tensor function shape indexes)
-  (if (eq shape nil)
-      (setf (apply #'aref (tensor-values new-tensor) indexes) (funcall function (apply #'aref (tensor-values tensor1) '()) (apply #'aref (tensor-values tensor2) indexes)))
-      (dotimes (dim (car shape))
-        (tensor-apply-dyadic tensor1 tensor2 new-tensor function (cdr shape) (append indexes (list dim)))))
-  new-tensor)
-
-(defmethod tensor-apply-dyadic ((tensor1 tensor) (tensor2 scalar) new-tensor function shape indexes)
-  (if (eq shape nil)
-      (setf (apply #'aref (tensor-values new-tensor) indexes) (funcall function (apply #'aref (tensor-values tensor1) indexes) (apply #'aref (tensor-values tensor2) '())))
-      (dotimes (dim (car shape))
-        (tensor-apply-dyadic tensor1 tensor2 new-tensor function (cdr shape) (append indexes (list dim)))))
-  new-tensor)
+;;;;;;;;;;;;;;;; MONADIC FUNCTIONS ;;;;;;;;;;;;;;;;
 
 ;(defgeneric .- (tensor1 &optional tensor2))
 
@@ -93,16 +78,58 @@
 ;    se for com 2 chama division)
 
 
-(defun .! (arg))
+(defun .! (tensor)
+	(tensor-apply #'! tensor))
 
-(defun .sin (arg))
+(defun .sin (tensor)
+	(tensor-apply #'sin tensor))
 
-(defun .cos (arg))
+(defun .cos (tensor)
+	(tensor-apply #'cos tensor))
 
-(defun .not (arg))
+(defun .not (tensor))
 
-(defun shape (arg))
+(defun shape (tensor)
+	(let ((shape-length (list-length (tensor-shape tensor))))
+		(tensor-construct 'tensor (make-array shape-length :initial-contents (tensor-shape tensor)) 1 shape-length shape-length)))
 
-(defun interval (arg))
+(defun interval (value)
+	(let ((interval-lst '()))
+		(progn 
+			(dotimes (n value)
+				(setf interval-lst (append interval-lst (list (+ n 1)))))
+			(tensor-construct 'tensor (make-array (list value) :initial-contents interval-lst) 1 (list value) value))))
+
+;;;;;;;;;;;;;;;; DYADIC FUNCTIONS ;;;;;;;;;;;;;;;;
+
+(defun drop (tensor1 tensor2))
 
 (defun reshape (tensor1 tensor2))
+
+(defun catenate (tensor1 tensor2))
+
+(defun member? (tensor1 tensor2))
+
+(defun select (tensor1 tensor2))
+
+;;;;;;;;;;;;;;;; MONADIC OPERATORS ;;;;;;;;;;;;;;;
+
+(defun fold (function))
+
+(defun scan (function))
+
+(defun outer-product (function))
+
+;;;;;;;;;;;;;;;; DYADIC OPERATORS  ;;;;;;;;;;;;;;;
+
+(defun inner-product (function1 function2))
+
+;;;;;;;;;;;;;;;;;;;; EXERCISES ;;;;;;;;;;;;;;;;;;;
+
+(defun tally (tensor))
+
+(defun rank (tensor))
+
+(defun within (tensor scalar1 scalar2))
+
+(defun primes (scalar))
