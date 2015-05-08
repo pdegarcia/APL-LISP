@@ -17,6 +17,15 @@
 (defun tensor-construct (type values rank shape size)
 	(make-instance type :values values :rank rank :shape shape :size size))
 
+(defun tensor-construct-simple (type rank shape size)
+	(make-instance type :values (make-array shape) :rank rank :shape shape :size size))
+
+(defun array-to-list (array)
+	(let ((lst '()))
+		(dotimes (n (length array))
+			(setf lst (append lst (list (aref array n)))))
+	lst))
+
 (defun tensor-copy-simple (tensor)
 	(let ((type 'tensor))
 		(if (eq (tensor-rank tensor) 0)		
@@ -35,6 +44,19 @@
 ; (defmethod print-object ((object tensor) stream)
 ; 	(tensor-print stream object (tensor-shape object) '()))
 
+ (defmethod print-object ((object tensor) stream)
+ 	(tensor-print stream object (tensor-shape object)))
+
+ (defun tensor-print (stream tensor shape)
+ 	(let ((cur-dimension (first shape)))
+	 	(if (eq shape nil)
+	 		(dotimes (position cur-dimension)
+	 			(progn 
+	 				(format stream "~a" (aref (tensor-values) position))
+	 				(if (not (eq position (- cur-dimension 1)))
+	 					(format stream " "))))
+	 		(tensor-print stream tensor (cdr shape)))))
+ 
 ; (defun tensor-print (stream tensor shape indexes)
 ; 	(let ((cur-dimension (list-length shape)))
 ;     (if (eq shape nil)
@@ -104,7 +126,16 @@
 
 (defun drop (tensor1 tensor2))
 
-(defun reshape (tensor1 tensor2))
+; ver de escalares
+(defun reshape (tensor1 tensor2)
+	(let* ((shape (array-to-list (tensor-displace tensor1)))
+		  (size-tensor1 (reduce #'* shape))
+		  (displaced-tensor2 (tensor-displace tensor2))
+		  (result-tensor (tensor-construct-simple 'tensor (list-length shape) shape size-tensor1))
+		  (displaced-result-tensor (tensor-displace result-tensor)))
+		(dotimes (position size-tensor1)
+			(setf (aref displaced-result-tensor position) (aref displaced-tensor2 (rem position (length displaced-tensor2)))))
+	result-tensor))
 
 (defun catenate (tensor1 tensor2))
 
@@ -133,5 +164,9 @@
 	(s (tensor-rank tensor)))
 
 (defun within (tensor scalar1 scalar2))
+
+(defun ravel (tensor)
+	(let ((displaced-tensor (tensor-displace tensor)))
+		(tensor-construct 'tensor displaced-tensor 1 (length displaced-tensor) (length displaced-tensor))))
 
 (defun primes (scalar))
