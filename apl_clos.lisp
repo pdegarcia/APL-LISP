@@ -126,9 +126,11 @@
 
 ;;;;;;;;;;;;;;;;;;;; EXERCISES ;;;;;;;;;;;;;;;;;;;
 
-(defun tally (tensor))
+(defun tally (tensor)
+	(s (tensor-size tensor)))
 
-(defun rank (tensor))
+(defun rank (tensor)
+	(s (tensor-rank tensor)))
 
 (defun within (tensor scalar1 scalar2))
 
