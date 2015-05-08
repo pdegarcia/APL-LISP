@@ -26,6 +26,13 @@
 			(setf lst (append lst (list (aref array n)))))
 	lst))
 
+(defun tensor-fill (tensor scalar)
+	(let* ((tensor-scalar (tensor-construct-simple 'tensor (tensor-rank tensor) (tensor-shape tensor) (tensor-size tensor)))
+		   (tensor-scalar-displaced (tensor-displace tensor-scalar)))
+		(dotimes (n (tensor-size tensor))
+			(setf (aref tensor-scalar-displaced n) (aref (tensor-values scalar))))
+		tensor-scalar))
+
 (defun tensor-copy-simple (tensor)
 	(let ((type 'tensor))
 		(if (eq (tensor-rank tensor) 0)		
@@ -44,18 +51,18 @@
 ; (defmethod print-object ((object tensor) stream)
 ; 	(tensor-print stream object (tensor-shape object) '()))
 
- (defmethod print-object ((object tensor) stream)
- 	(tensor-print stream object (tensor-shape object)))
+ ; (defmethod print-object ((object tensor) stream)
+ ; 	(tensor-print stream object (tensor-shape object)))
 
- (defun tensor-print (stream tensor shape)
- 	(let ((cur-dimension (first shape)))
-	 	(if (eq shape nil)
-	 		(dotimes (position cur-dimension)
-	 			(progn 
-	 				(format stream "~a" (aref (tensor-values) position))
-	 				(if (not (eq position (- cur-dimension 1)))
-	 					(format stream " "))))
-	 		(tensor-print stream tensor (cdr shape)))))
+ ; (defun tensor-print (stream tensor shape)
+ ; 	(let ((cur-dimension (first shape)))
+	;  	(if (eq shape nil)
+	;  		(dotimes (position cur-dimension)
+	;  			(progn 
+	;  				(format stream "~a" (aref (tensor-values) position))
+	;  				(if (not (eq position (- cur-dimension 1)))
+	;  					(format stream " "))))
+	;  		(tensor-print stream tensor (cdr shape)))))
  
 ; (defun tensor-print (stream tensor shape indexes)
 ; 	(let ((cur-dimension (list-length shape)))
@@ -86,19 +93,22 @@
 
 ;;;;;;;;;;;;;;;; MONADIC FUNCTIONS ;;;;;;;;;;;;;;;;
 
-;(defgeneric .- (tensor1 &optional tensor2))
+(defgeneric .- (tensor1 &optional tensor2))
 
+(defmethod .- (tensor1 &optional tensor2)
+	(if (eq tensor2 nil)
+		(tensor-apply #'- tensor1)
+		(tensor-apply-dyadic #'- tensor1 tensor2)))
 
-;(defmethod .- (tensor1 &optional tensor2)
-;    se for com 1 chama sym
-;    se for com 2 chama sub)
+(defgeneric ./ (tensor1 &optional tensor2))
 
-;(defgeneric ./ (tensor1 &optional tensor2))
+(defmethod ./ (tensor1 &optional tensor2)
+	(if (eq tensor2 nil)
+		(tensor-apply #'inverse tensor1)
+		(tensor-apply-dyadic #'/ tensor1 tensor2)))
 
-;(defmethod ./ (tensor1 &optional tensor2)
-;    se for com 1 chama inverse
-;    se for com 2 chama division)
-
+(defun inverse (value)
+	(/ 1 value))
 
 (defun .! (tensor)
 	(tensor-apply #'! tensor))
@@ -109,7 +119,13 @@
 (defun .cos (tensor)
 	(tensor-apply #'cos tensor))
 
-(defun .not (tensor))
+(defun .not (tensor)
+	(tensor-apply #'negation tensor))
+
+(defun negation (value)
+	(if (eq value 0)
+		1
+		0))
 
 (defun shape (tensor)
 	(let ((shape-length (list-length (tensor-shape tensor))))
@@ -123,6 +139,55 @@
 			(tensor-construct 'tensor (make-array (list value) :initial-contents interval-lst) 1 (list value) value))))
 
 ;;;;;;;;;;;;;;;; DYADIC FUNCTIONS ;;;;;;;;;;;;;;;;
+(defgeneric tensor-apply-dyadic (function tensor1 tensor2))
+
+(defmethod tensor-apply-dyadic (function (tensor1 tensor) (tensor2 tensor))
+	(assert (and (eq (tensor-rank tensor1) (tensor-rank tensor2))
+				 (equal (tensor-shape tensor1) (tensor-shape tensor2)))
+			(tensor1 tensor2)
+			"ERROR: The given tensors do not have the same rank nor shape")
+	(tensor-apply function tensor1 tensor2))
+
+(defmethod tensor-apply-dyadic (function (tensor1 scalar) (tensor2 tensor))
+	(let ((tensor-scalar (tensor-fill tensor2 tensor1)))
+		(tensor-apply function tensor-scalar tensor2)))
+
+(defmethod tensor-apply-dyadic (function (tensor1 tensor) (tensor2 scalar))
+	(let ((tensor-scalar (tensor-fill tensor1 tensor2)))
+		(tensor-apply function tensor1 tensor-scalar)))
+
+(defun .+ (tensor1 tensor2)
+	(tensor-apply-dyadic #'+ tensor1 tensor2))
+
+(defun .* (tensor1 tensor2)
+	(tensor-apply-dyadic #'* tensor1 tensor2))
+
+(defun .// (tensor1 tensor2)
+	(tensor-apply-dyadic #'floor tensor1 tensor2))
+
+(defun .% (tensor1 tensor2)
+	(tensor-apply-dyadic #'rem tensor1 tensor2))
+
+(defun .< (tensor1 tensor2)
+	(tensor-apply-dyadic #'< tensor1 tensor2))
+
+(defun .> (tensor1 tensor2)
+	(tensor-apply-dyadic #'> tensor1 tensor2))
+
+(defun .<= (tensor1 tensor2)
+	(tensor-apply-dyadic #'<= tensor1 tensor2))
+
+(defun .>= (tensor1 tensor2)
+	(tensor-apply-dyadic #'>= tensor1 tensor2))
+
+(defun .= (tensor1 tensor2)
+	(tensor-apply-dyadic #'= tensor1 tensor2))
+
+(defun .or (tensor1 tensor2)
+	(tensor-apply-dyadic #'or tensor1 tensor2))
+
+(defun .and (tensor1 tensor2)
+	(tensor-apply-dyadic #'and tensor1 tensor2))
 
 (defun drop (tensor1 tensor2))
 
