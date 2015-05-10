@@ -18,7 +18,7 @@
 	(make-instance type :values values :rank rank :shape shape :size size))
 
 (defun tensor-construct-simple (type rank shape size)
-	(make-instance type :values (make-array shape) :rank rank :shape shape :size size))
+	(make-instance type :values (make-array size) :rank rank :shape shape :size size))
 
 (defun array-to-list (array)
 	(let ((lst '()))
@@ -27,11 +27,10 @@
 	lst))
 
 (defun tensor-fill (tensor scalar)
-	(let* ((tensor-scalar (tensor-construct-simple 'tensor (tensor-rank tensor) (tensor-shape tensor) (tensor-size tensor)))
-		   (tensor-scalar-displaced (tensor-displace tensor-scalar)))
+	(let ((tensor-scalar (tensor-construct-simple 'tensor (tensor-rank tensor) (tensor-shape tensor) (tensor-size tensor)))
 		(dotimes (n (tensor-size tensor))
-			(setf (aref tensor-scalar-displaced n) (aref (tensor-values scalar))))
-		tensor-scalar))
+			(setf (aref (tensor-values tensor-scalar) n) (aref (tensor-values scalar))))
+		tensor-scalar)))
 
 (defun tensor-copy-simple (tensor)
 	(let ((type 'tensor))
@@ -40,55 +39,46 @@
 		(make-instance type :values (make-array (tensor-shape tensor)) :rank (tensor-rank tensor) :shape (tensor-shape tensor) :size (tensor-size tensor))))
 
 (defun s (arg)
-	(tensor-construct 'scalar (make-array nil :initial-contents arg) 0 '() 1))
+	(tensor-construct 'scalar (make-array 1 :initial-contents (list arg)) 0 '() 1))
 
 (defun v (&rest args)
  	(let* ((s (list-length args))
  		   (shape (list s)))			
  		(tensor-construct 'tensor (make-array shape :initial-contents args) 1 shape s)))
 
-
-; (defmethod print-object ((object tensor) stream)
-; 	(tensor-print stream object (tensor-shape object) '()))
-
- ; (defmethod print-object ((object tensor) stream)
- ; 	(tensor-print stream object (tensor-shape object)))
-
- ; (defun tensor-print (stream tensor shape)
- ; 	(let ((cur-dimension (first shape)))
-	;  	(if (eq shape nil)
-	;  		(dotimes (position cur-dimension)
-	;  			(progn 
-	;  				(format stream "~a" (aref (tensor-values) position))
-	;  				(if (not (eq position (- cur-dimension 1)))
-	;  					(format stream " "))))
-	;  		(tensor-print stream tensor (cdr shape)))))
- 
-; (defun tensor-print (stream tensor shape indexes)
-; 	(let ((cur-dimension (list-length shape)))
-;     (if (eq shape nil)
-;   		(progn
-;         (format stream "~a" (apply #'aref (tensor-values tensor) indexes))
-;         (if (not (eq (car (last indexes)) (- (car (last (tensor-shape tensor))) 1)))
-;           (format stream " ")))
-;   		(progn (dotimes (dim (car shape))
-;   			   		(tensor-print stream tensor (cdr shape) (append indexes (list dim))))
-;   				(if (not (eq (tensor-rank tensor) cur-dimension))
-;   					(if (not (eq (car (last indexes)) (- (car (last shape)) 1)))
-;   						(dotimes (r cur-dimension)
-;   							(format stream "~%"))))))))
-
-(defun tensor-displace (tensor)
- 	(make-array (tensor-size tensor) :displaced-to (tensor-values tensor)))
+(defmethod print-object ((object tensor) stream)
+	(labels (
+		(tensor-print-tester (indexes shape)
+			(if (eq indexes nil)
+				nil
+				(if (not (eq (- (car (last shape)) 1) (car (last indexes))))
+					t
+					nil)))
+		(tensor-print-new-lines (dimension indexes shape)
+			(if (not (eq (tensor-rank object) dimension))
+				(if (eq (tensor-print-tester indexes shape) t)
+					(dotimes (d dimension)
+						(format stream "~%")))))
+		(tensor-print (stream object position shape indexes)
+			(let ((cur-dimension (list-length shape))
+				  (cur-dimension-value (first shape)))
+				(if (eq shape nil)
+					(progn 
+						(format stream "~a" (aref (tensor-values object) position))
+						(if (eq (tensor-print-tester indexes (tensor-shape object)) t)
+							(format stream " "))
+						(incf position))
+					(progn
+						(dotimes (dim cur-dimension-value)
+							(setf position (tensor-print stream object position (cdr shape) (append indexes (list dim)))))
+						(tensor-print-new-lines cur-dimension indexes shape))))
+			position))
+	(tensor-print stream object 0 (tensor-shape object) '())))
 
 (defun tensor-apply (function &rest tensors)
-	(let* ((displaced-values '())
-		  (result (tensor-copy-simple (first tensors)))	
-		  (result-displaced (tensor-displace result)))
-		(progn 
-			(dolist (tensor tensors) 
-				(setf displaced-values (append displaced-values (list (tensor-displace tensor)))))
-			(apply #'map-into result-displaced function displaced-values))
+	(let ((tensors-values (mapcar #'(lambda (n) (tensor-values n)) tensors))
+		  (result (tensor-copy-simple (first tensors))))
+		(apply #'map-into (tensor-values result) function tensors-values)
 	result))
 
 ;;;;;;;;;;;;;;;; MONADIC FUNCTIONS ;;;;;;;;;;;;;;;;
@@ -193,13 +183,12 @@
 
 ; ver de escalares
 (defun reshape (tensor1 tensor2)
-	(let* ((shape (array-to-list (tensor-displace tensor1)))
+	(let* ((shape (array-to-list (tensor-values tensor1)))
 		  (size-tensor1 (reduce #'* shape))
-		  (displaced-tensor2 (tensor-displace tensor2))
-		  (result-tensor (tensor-construct-simple 'tensor (list-length shape) shape size-tensor1))
-		  (displaced-result-tensor (tensor-displace result-tensor)))
+		  (result-tensor (tensor-construct-simple 'tensor (length shape) shape size-tensor1))
+		  (tensor2-size (tensor-size tensor2)))
 		(dotimes (position size-tensor1)
-			(setf (aref displaced-result-tensor position) (aref displaced-tensor2 (rem position (length displaced-tensor2)))))
+			(setf (aref (tensor-values result-tensor) position) (aref (tensor-values tensor2) (rem position tensor2-size))))
 	result-tensor))
 
 (defun catenate (tensor1 tensor2))
@@ -210,9 +199,26 @@
 
 ;;;;;;;;;;;;;;;; MONADIC OPERATORS ;;;;;;;;;;;;;;;
 
-(defun fold (function))
+(defun fold (function)
+	#'(lambda (tensor) 
+		(let ((result 0))
+			(setf result (reduce function (tensor-values tensor)))
+		(s result))))
 
-(defun scan (function))
+(defun scan (function)
+	#'(lambda (tensor)
+		(let ((tensor-list (array-to-list (tensor-values tensor)))
+			  (combination-list '())
+			  (result-tensor (tensor-construct-simple 'tensor (tensor-size tensor) (tensor-shape tensor) (tensor-size tensor)))
+			  (position 0))
+			(progn
+				(nreverse tensor-list)
+				(mapl #'(lambda (sub-list) (push sub-list combination-list)) tensor-list)
+				(dolist (combination combination-list)
+					(progn
+						(setf (aref (tensor-values result-tensor) position) (reduce function combination))
+						(incf position))))
+		result-tensor)))
 
 (defun outer-product (function))
 
@@ -223,15 +229,13 @@
 ;;;;;;;;;;;;;;;;;;;; EXERCISES ;;;;;;;;;;;;;;;;;;;
 
 (defun tally (tensor)
-	(s (tensor-size tensor)))
+	(funcall (fold #'*) (shape tensor)))
 
-(defun rank (tensor)
-	(s (tensor-rank tensor)))
+(defun rank (tensor))
 
 (defun within (tensor scalar1 scalar2))
 
-(defun ravel (tensor)
-	(let ((displaced-tensor (tensor-displace tensor)))
-		(tensor-construct 'tensor displaced-tensor 1 (length displaced-tensor) (length displaced-tensor))))
+(defun ravel (tensor) 
+	(reshape (tally tensor) tensor))
 
 (defun primes (scalar))
