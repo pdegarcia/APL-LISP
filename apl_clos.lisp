@@ -20,31 +20,61 @@
 (defun tensor-construct-simple (type rank shape size)
 	(make-instance type :values (make-array size) :rank rank :shape shape :size size))
 
+(defun tensor-copy-simple (tensor)
+	(let ((type 'tensor))
+		(if (eq (tensor-rank tensor) 0)		
+			(setf type 'scalar))
+		(make-instance type :values (make-array (tensor-size tensor)) :rank (tensor-rank tensor) :shape (tensor-shape tensor) :size (tensor-size tensor))))
+
 (defun array-to-list (array)
 	(let ((lst '()))
 		(dotimes (n (length array))
 			(setf lst (append lst (list (aref array n)))))
 	lst))
 
-(defun tensor-fill (tensor scalar)
-	(let ((tensor-scalar (tensor-construct-simple 'tensor (tensor-rank tensor) (tensor-shape tensor) (tensor-size tensor)))
-		(dotimes (n (tensor-size tensor))
-			(setf (aref (tensor-values tensor-scalar) n) (aref (tensor-values scalar))))
-		tensor-scalar)))
+(defun array-to-multi-list (array position shape)
+	(let ((sub-list '())
+	      (cur-dimension (list-length shape))§
+	      (cur-dimension-value (first shape))
+		  (result-pair nil))
+		(if (eq cur-dimension 1)
+			(dotimes (n cur-dimension-value)
+				(progn 
+					(setf sub-list (append sub-list (list (aref array position))))
+					(incf position)))
+			(dotimes (dim cur-dimension-value)
+				(progn 
+					(setf result-pair (array-to-multi-list array position (cdr shape)))
+					(setf sub-list (append sub-list (list (car result-pair))))
+					(setf position (cdr result-pair)))))
+	(cons sub-list position)))
 
-(defun tensor-copy-simple (tensor)
-	(let ((type 'tensor))
-		(if (eq (tensor-rank tensor) 0)		
-			(setf type 'scalar))
-		(make-instance type :values (make-array (tensor-shape tensor)) :rank (tensor-rank tensor) :shape (tensor-shape tensor) :size (tensor-size tensor))))
+
+(defun multi-list-to-array (lst position shape array)
+	(let ((cur-dimension (list-length shape)))
+		(if (eq cur-dimension 1)
+			(dolist (value lst)
+				(progn 
+					(setf (aref array position) value)
+					(incf position)))
+			(dolist (sub-list lst)
+				(setf position (multi-list-to-array sub-list position (cdr shape) array))))
+	position))
+
+(defun tensor-fill (tensor scalar)
+	(let ((tensor-scalar (tensor-construct-simple 'tensor (tensor-rank tensor) (tensor-shape tensor) (tensor-size tensor))))
+		(dotimes (n (tensor-size tensor))
+			(setf (aref (tensor-values tensor-scalar) n) (aref (tensor-values scalar) 0)))
+		tensor-scalar))
 
 (defun s (arg)
 	(tensor-construct 'scalar (make-array 1 :initial-contents (list arg)) 0 '() 1))
 
 (defun v (&rest args)
- 	(let* ((s (list-length args))
+ 	(let* ((values (if (listp (first args)) (first args) args))
+ 		   (s (list-length values))
  		   (shape (list s)))			
- 		(tensor-construct 'tensor (make-array shape :initial-contents args) 1 shape s)))
+ 		(tensor-construct 'tensor (make-array shape :initial-contents values) 1 shape s)))
 
 (defmethod print-object ((object tensor) stream)
 	(labels (
@@ -118,8 +148,7 @@
 		0))
 
 (defun shape (tensor)
-	(let ((shape-length (list-length (tensor-shape tensor))))
-		(tensor-construct 'tensor (make-array shape-length :initial-contents (tensor-shape tensor)) 1 shape-length shape-length)))
+	(v (tensor-shape tensor)))
 
 (defun interval (value)
 	(let ((interval-lst '()))
@@ -191,7 +220,17 @@
 			(setf (aref (tensor-values result-tensor) position) (aref (tensor-values tensor2) (rem position tensor2-size))))
 	result-tensor))
 
-(defun catenate (tensor1 tensor2))
+(defgeneric catenate (tensor1 tensor2))
+
+(defmethod catenate ((tensor1 scalar) (tensor2 scalar))
+	(v (aref (tensor-values tensor1) 0) (aref (tensor-values tensor2) 0)))
+
+(defmethod catenate ((tensor1 tensor) (tensor2 tensor))
+	(assert (<= (abs (- (tensor-rank tensor1) (tensor-rank tensor2))) 1)
+			(tensor1 tensor2)
+			"ERROR: The difference between both tensor ranks is superior to one")
+	(print "ole")
+	)
 
 (defun member? (tensor1 tensor2))
 
@@ -200,10 +239,8 @@
 ;;;;;;;;;;;;;;;; MONADIC OPERATORS ;;;;;;;;;;;;;;;
 
 (defun fold (function)
-	#'(lambda (tensor) 
-		(let ((result 0))
-			(setf result (reduce function (tensor-values tensor)))
-		(s result))))
+	#'(lambda (tensor)
+		(s (reduce function (tensor-values tensor)))))
 
 (defun scan (function)
 	#'(lambda (tensor)
@@ -231,9 +268,11 @@
 (defun tally (tensor)
 	(funcall (fold #'*) (shape tensor)))
 
-(defun rank (tensor))
+(defun rank (tensor)
+	(funcall (fold #'+ ) (.> (shape tensor) (s 0))))
 
-(defun within (tensor scalar1 scalar2))
+(defun within (tensor scalar1 scalar2)
+	(select (.* (.>= tensor n1) (.<= tensor n2)) tensor))
 
 (defun ravel (tensor) 
 	(reshape (tally tensor) tensor))
