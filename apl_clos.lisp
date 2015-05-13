@@ -66,12 +66,20 @@
 			(setf (aref (tensor-values tensor-scalar) n) (aref (tensor-values scalar) 0)))
 		tensor-scalar))
 
-(defun tensor-type-convert (tensor)
+(defun tensor-convert-to-int (tensor)
 	(let ((result-tensor (tensor-copy-simple tensor)))
 		(dotimes (position (tensor-size tensor))
 			(if (eq (aref (tensor-values tensor) position) nil)
 				(setf (aref (tensor-values result-tensor) position) 0)
 				(setf (aref (tensor-values result-tensor) position) 1)))
+	result-tensor))
+
+(defun tensor-convert-to-bool (tensor)
+	(let ((result-tensor (tensor-copy-simple tensor)))
+		(dotimes (position (tensor-size tensor))
+			(if (eq (aref (tensor-values tensor) position) 0)
+				(setf (aref (tensor-values result-tensor) position) nil)
+				(setf (aref (tensor-values result-tensor) position) t)))
 	result-tensor))
 
 (defun s (arg)
@@ -90,8 +98,8 @@
 				t
 				(and (eql (- (car shape) 1) (car indexes)) 
 					 (last-iteration? (cdr shape) (cdr indexes)))))
-		 (tensor-print-tester (indexes shape)
-		 	(if (eq indexes nil)
+		(tensor-print-tester (indexes shape)
+			(if (eq indexes nil)
 		 		nil
 		 		(if (not (eq (- (car (last shape)) 1) (car (last indexes))))
 		 			t
@@ -196,25 +204,32 @@
 	(tensor-apply-dyadic #'rem tensor1 tensor2))
 
 (defun .< (tensor1 tensor2)
-	(tensor-type-convert (tensor-apply-dyadic #'< tensor1 tensor2)))
+	(tensor-convert-to-int
+ (tensor-apply-dyadic #'< tensor1 tensor2)))
 
 (defun .> (tensor1 tensor2)
-	(tensor-type-convert (tensor-apply-dyadic #'> tensor1 tensor2)))
+	(tensor-convert-to-int
+ (tensor-apply-dyadic #'> tensor1 tensor2)))
 
 (defun .<= (tensor1 tensor2)
-	(tensor-type-convert (tensor-apply-dyadic #'<= tensor1 tensor2)))
+	(tensor-convert-to-int
+ (tensor-apply-dyadic #'<= tensor1 tensor2)))
 
 (defun .>= (tensor1 tensor2)
-	(tensor-type-convert (tensor-apply-dyadic #'>= tensor1 tensor2)))
+	(tensor-convert-to-int
+ (tensor-apply-dyadic #'>= tensor1 tensor2)))
 
 (defun .= (tensor1 tensor2)
-	(tensor-type-convert (tensor-apply-dyadic #'= tensor1 tensor2)))
+	(tensor-convert-to-int
+ (tensor-apply-dyadic #'= tensor1 tensor2)))
 
+;transformar inteiros para booleans
 (defun .or (tensor1 tensor2)
-	(tensor-apply-dyadic #'(lambda (v1 v2) (or v1 v2)) tensor1 tensor2))
+	(tensor-convert-to-int (tensor-apply-dyadic #'(lambda (v1 v2) (or v1 v2)) (tensor-convert-to-bool tensor1) (tensor-convert-to-bool tensor2))))
 
+;transformar inteiros para booleans
 (defun .and (tensor1 tensor2)
-	(tensor-apply-dyadic #'(lambda (v1 v2) (and v1 v2)) tensor1 tensor2))
+	(tensor-convert-to-int (tensor-apply-dyadic #'(lambda (v1 v2) (and v1 v2)) (tensor-convert-to-bool tensor1) (tensor-convert-to-bool tensor2))))
 
 ; ver de escalares
 (defun reshape (tensor1 tensor2)
