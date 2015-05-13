@@ -49,7 +49,6 @@
 					(setf position (cdr result-pair)))))
 	(cons sub-list position)))
 
-
 (defun multi-list-to-array (lst position shape array)
 	(let ((cur-dimension (list-length shape)))
 		(if (eq cur-dimension 1)
@@ -66,6 +65,14 @@
 		(dotimes (n (tensor-size tensor))
 			(setf (aref (tensor-values tensor-scalar) n) (aref (tensor-values scalar) 0)))
 		tensor-scalar))
+
+(defun tensor-type-convert (tensor)
+	(let ((result-tensor (tensor-copy-simple tensor)))
+		(dotimes (position (tensor-size tensor))
+			(if (eq (aref (tensor-values tensor) position) nil)
+				(setf (aref (tensor-values result-tensor) position) 0)
+				(setf (aref (tensor-values result-tensor) position) 1)))
+	result-tensor))
 
 (defun s (arg)
 	(tensor-construct 'scalar (make-array 1 :initial-contents (list arg)) 0 '() 1))
@@ -155,7 +162,7 @@
 		(progn 
 			(dotimes (n value)
 				(setf interval-lst (append interval-lst (list (+ n 1)))))
-			(tensor-construct 'tensor (make-array (list value) :initial-contents interval-lst) 1 (list value) value))))
+			(v interval-lst))))
 
 ;;;;;;;;;;;;;;;; DYADIC FUNCTIONS ;;;;;;;;;;;;;;;;
 (defgeneric tensor-apply-dyadic (function tensor1 tensor2))
@@ -188,19 +195,19 @@
 	(tensor-apply-dyadic #'rem tensor1 tensor2))
 
 (defun .< (tensor1 tensor2)
-	(tensor-apply-dyadic #'< tensor1 tensor2))
+	(tensor-type-convert (tensor-apply-dyadic #'< tensor1 tensor2)))
 
 (defun .> (tensor1 tensor2)
-	(tensor-apply-dyadic #'> tensor1 tensor2))
+	(tensor-type-convert (tensor-apply-dyadic #'> tensor1 tensor2)))
 
 (defun .<= (tensor1 tensor2)
-	(tensor-apply-dyadic #'<= tensor1 tensor2))
+	(tensor-type-convert (tensor-apply-dyadic #'<= tensor1 tensor2)))
 
 (defun .>= (tensor1 tensor2)
-	(tensor-apply-dyadic #'>= tensor1 tensor2))
+	(tensor-type-convert (tensor-apply-dyadic #'>= tensor1 tensor2)))
 
 (defun .= (tensor1 tensor2)
-	(tensor-apply-dyadic #'= tensor1 tensor2))
+	(tensor-type-convert (tensor-apply-dyadic #'= tensor1 tensor2)))
 
 (defun .or (tensor1 tensor2)
 	(tensor-apply-dyadic #'or tensor1 tensor2))
@@ -213,12 +220,96 @@
 ; ver de escalares
 (defun reshape (tensor1 tensor2)
 	(let* ((shape (array-to-list (tensor-values tensor1)))
-		  (size-tensor1 (reduce #'* shape))
-		  (result-tensor (tensor-construct-simple 'tensor (length shape) shape size-tensor1))
-		  (tensor2-size (tensor-size tensor2)))
+		   (size-tensor1 (reduce #'* shape))
+		   (result-tensor (tensor-construct-simple 'tensor (length shape) shape size-tensor1))
+		   (tensor2-size (tensor-size tensor2)))
 		(dotimes (position size-tensor1)
 			(setf (aref (tensor-values result-tensor) position) (aref (tensor-values tensor2) (rem position tensor2-size))))
 	result-tensor))
+
+(defun change-shape (shape value)
+	(let ((new-shape '()))
+		(progn 	
+			(dotimes (n (- (list-length shape) 1))
+				(setf new-shape (append new-shape (list (nth n shape)))))
+			(setf new-shape (append new-shape (list value))))
+	new-shape))
+
+; adicionar assert que verifica tamanho do 1º tensor
+(defun select (tensor1 tensor2)
+	(labels (
+		(select-recursive (lst shape array-last-dim)
+			(let ((new-list '()))
+				(if (eq (list-length shape) 1)
+					(dotimes (p (length array-last-dim))
+						(if (eq (aref array-last-dim p) 1)
+							(setf new-list (append new-list (list (nth p lst))))))
+					(dolist (sub-list lst)
+						(setf new-list (append new-list (list (select-recursive sub-list (cdr shape) array-last-dim))))))
+			new-list))
+		(apply-select (tensor1 tensor2)
+			(let* ((new-shape (change-shape (tensor-shape tensor2) (reduce #'+ (tensor-values tensor1))))
+				   (result-tensor (tensor-construct-simple 'tensor (tensor-rank tensor2) new-shape (reduce #'* new-shape)))
+				   (tensor2-list (car (array-to-multi-list (tensor-values tensor2) 0 (tensor-shape tensor2)))))
+				(multi-list-to-array (select-recursive tensor2-list (tensor-shape tensor2) (tensor-values tensor1)) 0 new-shape (tensor-values result-tensor))
+			result-tensor)))
+	(apply-select tensor1 tensor2)))
+
+(defun calc-shape (shape1 shape2)
+	(let ((new-shape shape1))
+		(dotimes (n (list-length shape2))
+			(if (eq (nth n shape1) nil)
+				(setf new-shape (append new-shape (list 0)))))
+	(mapcar #'- shape2 (mapcar #'abs new-shape))))
+
+;verificar n-1 dims = 0
+(defun drop (tensor1 tensor2)
+	(labels (
+		(drop-recursive (lst depth dropped-values)
+			(let ((new-list '()))
+				(if (eq depth 0)
+					(if (> dropped-values 0)
+						(dotimes (n dropped-values)
+							(setf new-list (cdr lst)))
+						(if (< dropped-values 0)
+							(dotimes (n (- (list-length lst) (abs dropped-values)))
+								(setf new-list (append new-list (list (nth n lst)))))
+							(if (eq dropped-values 0)
+								(setf new-list (append new-list lst)))))
+					(dolist (sub-list lst)
+						(setf new-list (append new-list (list (drop-recursive sub-list (- depth 1) dropped-values))))))
+			new-list))
+		(apply-drop (tensor1 tensor2)
+			(let* ((lst (car (array-to-multi-list (tensor-values tensor2) 0 (tensor-shape tensor2))))
+				   (dimensions (tensor-values tensor1))
+				   (depth 0)
+				   (new-shape (calc-shape (array-to-list dimensions) (tensor-shape tensor2)))
+				   (result-tensor (tensor-construct-simple 'tensor (list-length new-shape) new-shape (reduce #'* new-shape))))
+				(progn 
+					(dotimes (position (length dimensions))
+						(progn
+							(setf lst (drop-recursive lst depth (aref dimensions position)))
+							(incf depth)))
+					(multi-list-to-array lst 0 new-shape (tensor-values result-tensor)))
+			result-tensor)))
+	(apply-drop tensor1 tensor2)))
+
+(defun catenate-auxiliar (tensor source-shape)
+	(let ((new-shape '())
+		  (sub-shape (subseq source-shape 0 (- (list-length source-shape) 1))))
+		(progn
+			(if (typep tensor 'scalar)
+				(setf new-shape (append new-shape sub-shape)))
+			(setf new-shape (append new-shape (list 1)))
+			(reshape (v new-shape) tensor))))
+
+(defun list-recursion (lst elements shape)
+	(let ((new-list '()))	
+		(if (eq (list-length shape) 1)
+			(setf new-list (append (append new-list lst) elements))
+			(dolist (sub-list lst)
+				(setf new-list (append new-list (list-recursion sub-list elements (cdr shape))))))
+	new-list))
 
 (defgeneric catenate (tensor1 tensor2))
 
@@ -232,9 +323,29 @@
 	(print "ole")
 	)
 
-(defun member? (tensor1 tensor2))
+(defmethod catenate((tensor1 scalar) (tensor2 tensor))
+	(let ((new-tensor (catenate-auxiliar tensor1) (tensor-shape tensor2))
+		  (new-tensor-list (array-to-multi-list (tensor-values new-tensor) 0 (tensor-shape new-tensor))))
+		 (list-to-array (list-recursion new-tensor-list (list (tensor-values tensor1) (tensor-shape new-tensor)))		
+	)))
 
-(defun select (tensor1 tensor2))
+(defmethod catenate((tensor1 tensor) (tensor2 scalar))
+	(let ((new-tensor (tensor-construct-simple 'tensor (tensor-rank tensor1) shape (reduce #'* shape)))))
+		(progn
+			(setf (nth (- (tensor-rank tensor1) 1) (tensor-shape tensor1)) (+ (nth (- (tensor-rank tensor1) 1) (tensor-shape tensor1)) 1))
+			(new-tensor-list (array-to-multi-list (tensor-values tensor1) 0 (tensor-shape tensor1)))))
+			
+
+		;(new-tensor-list (tensor-values new-tensor))))
+	;new-tensor))
+
+(defun member? (tensor1 tensor2)
+	(let ((result-tensor (tensor-copy-simple tensor1)))
+		(dotimes (position (tensor-size tensor1))
+				(if (> (funcall fold #'+ (.= (s (aref tensor1 position)) tensor2)) 0)
+					(setf (aref (tensor-values result-tensor) position) 1)
+					(setf (aref (tensor-values result-tensor) position) 0)))
+	result-tensor))
 
 ;;;;;;;;;;;;;;;; MONADIC OPERATORS ;;;;;;;;;;;;;;;
 
@@ -257,11 +368,24 @@
 						(incf position))))
 		result-tensor)))
 
-(defun outer-product (function))
+(defun outer-product (function)
+	#'(lambda (tensor1 tensor2)
+		(let* ((shape (append (tensor-shape tensor1) (tensor-shape tensor2)))
+			   (result-tensor (tensor-construct-simple 'tensor (list-length shape) shape (reduce #'* shape)))
+			   (position 0))
+			(dotimes (i (tensor-size tensor1))
+				(dotimes (j (tensor-size tensor2))
+					(progn
+						(setf (aref (tensor-values result-tensor) position) (apply function (list (aref (tensor-values tensor1) i) (aref (tensor-values tensor2) j))))
+						(incf position))))
+		result-tensor)))
 
 ;;;;;;;;;;;;;;;; DYADIC OPERATORS  ;;;;;;;;;;;;;;;
 
-(defun inner-product (function1 function2))
+(defun inner-product (function1 function2)
+	#'(lambda (tensor1 tensor2)
+
+	))
 
 ;;;;;;;;;;;;;;;;;;;; EXERCISES ;;;;;;;;;;;;;;;;;;;
 
@@ -272,7 +396,7 @@
 	(funcall (fold #'+ ) (.> (shape tensor) (s 0))))
 
 (defun within (tensor scalar1 scalar2)
-	(select (.* (.>= tensor n1) (.<= tensor n2)) tensor))
+	(select (.* (.>= tensor scalar1) (.<= tensor scalar2)) tensor))
 
 (defun ravel (tensor) 
 	(reshape (tally tensor) tensor))
