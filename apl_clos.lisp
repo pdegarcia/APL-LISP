@@ -85,17 +85,17 @@
 
 (defmethod print-object ((object tensor) stream)
 	(labels (
-		(tensor-print-tester (indexes shape)
-			(if (eq indexes nil)
-				nil
-				(if (not (eq (- (car (last shape)) 1) (car (last indexes))))
-					t
-					nil)))
-		(tensor-print-new-lines (dimension indexes shape)
-			(if (not (eq (tensor-rank object) dimension))
-				(if (eq (tensor-print-tester indexes shape) t)
-					(dotimes (d dimension)
-						(format stream "~%")))))
+		(last-iteration? (shape indexes)
+			(if (null indexes)
+				t
+				(and (eql (- (car shape) 1) (car indexes)) 
+					 (last-iteration? (cdr shape) (cdr indexes)))))
+		 (tensor-print-tester (indexes shape)
+		 	(if (eq indexes nil)
+		 		nil
+		 		(if (not (eq (- (car (last shape)) 1) (car (last indexes))))
+		 			t
+		 			nil)))
 		(tensor-print (stream object position shape indexes)
 			(let ((cur-dimension (list-length shape))
 				  (cur-dimension-value (first shape)))
@@ -108,8 +108,9 @@
 					(progn
 						(dotimes (dim cur-dimension-value)
 							(setf position (tensor-print stream object position (cdr shape) (append indexes (list dim)))))
-						(tensor-print-new-lines cur-dimension indexes shape))))
-			position))
+						(unless (last-iteration? (tensor-shape object) indexes)
+							(format stream "~%"))))
+			position)))
 	(tensor-print stream object 0 (tensor-shape object) '())))
 
 (defun tensor-apply (function &rest tensors)
@@ -210,12 +211,10 @@
 	(tensor-type-convert (tensor-apply-dyadic #'= tensor1 tensor2)))
 
 (defun .or (tensor1 tensor2)
-	(tensor-apply-dyadic #'or tensor1 tensor2))
+	(tensor-apply-dyadic #'(lambda (v1 v2) (or v1 v2)) tensor1 tensor2))
 
 (defun .and (tensor1 tensor2)
-	(tensor-apply-dyadic #'and tensor1 tensor2))
-
-(defun drop (tensor1 tensor2))
+	(tensor-apply-dyadic #'(lambda (v1 v2) (and v1 v2)) tensor1 tensor2))
 
 ; ver de escalares
 (defun reshape (tensor1 tensor2)
