@@ -15,24 +15,29 @@
 (defclass scalar (tensor) ())
 
 (defun tensor-construct (type values rank shape size)
+	"Function that constructs a tensor with the given arguments."
 	(make-instance type :values values :rank rank :shape shape :size size))
 
 (defun tensor-construct-simple (type rank shape size)
+	"Function that constructs a tensor with the given arguments but not initializing the slot values."
 	(make-instance type :values (make-array size) :rank rank :shape shape :size size))
 
 (defun tensor-copy-simple (tensor)
+	"Function that constructs a tensor from the slots of the given tensor but not initializing the slot values."
 	(let ((type 'tensor))
 		(if (eq (tensor-rank tensor) 0)		
 			(setf type 'scalar))
 		(make-instance type :values (make-array (tensor-size tensor)) :rank (tensor-rank tensor) :shape (tensor-shape tensor) :size (tensor-size tensor))))
 
 (defun array-to-list (array)
+	"Function that converts the given 1d array to a flat list."
 	(let ((lst '()))
 		(dotimes (n (length array))
 			(setf lst (append lst (list (aref array n)))))
 	lst))
 
 (defun array-to-multi-list (array position shape)
+	"Function that converts the given array to a nested list taking the given shape into account."
 	(let ((sub-list '())
 	      (cur-dimension (list-length shape))§
 	      (cur-dimension-value (first shape))
@@ -50,6 +55,7 @@
 	(cons sub-list position)))
 
 (defun multi-list-to-array (lst position shape array)
+	"Function that converts the given nested list to a flat array."
 	(let ((cur-dimension (list-length shape)))
 		(if (eq cur-dimension 1)
 			(dolist (value lst)
@@ -61,15 +67,11 @@
 	position))
 
 (defun list-to-array (lst)
+	"Function that converts the given list to an array."
 	(make-array (list-length lst) :initial-contents lst))
 
-(defun tensor-fill (tensor scalar)
-	(let ((tensor-scalar (tensor-construct-simple 'tensor (tensor-rank tensor) (tensor-shape tensor) (tensor-size tensor))))
-		(dotimes (n (tensor-size tensor))
-			(setf (aref (tensor-values tensor-scalar) n) (aref (tensor-values scalar) 0)))
-		tensor-scalar))
-
 (defun tensor-convert-to-int (tensor)
+	"Function that converts the given boolean tensor to int representation."
 	(let ((result-tensor (tensor-copy-simple tensor)))
 		(dotimes (position (tensor-size tensor))
 			(if (eq (aref (tensor-values tensor) position) nil)
@@ -78,6 +80,7 @@
 	result-tensor))
 
 (defun tensor-convert-to-bool (tensor)
+	"Function that converts the given int tensor to boolean."
 	(let ((result-tensor (tensor-copy-simple tensor)))
 		(dotimes (position (tensor-size tensor))
 			(if (eq (aref (tensor-values tensor) position) 0)
@@ -86,15 +89,19 @@
 	result-tensor))
 
 (defun s (arg)
+	"Function that constructs a scalar with the given argument."
 	(tensor-construct 'scalar (make-array 1 :initial-contents (list arg)) 0 '() 1))
 
 (defun v (&rest args)
+	"Function that constructs a vector with the given arguments."
  	(let* ((values (if (listp (first args)) (first args) args))
  		   (s (list-length values))
  		   (shape (list s)))			
  		(tensor-construct 'tensor (make-array shape :initial-contents values) 1 shape s)))
 
 (defmethod print-object ((object tensor) stream)
+	"Specialization to tensors of the generic function Print-Object.
+	 Prints the given tensors according to the rules of dimensions, etc."
 	(labels (
 		(can-print? (shape indexes)
 			(if (null indexes)
@@ -119,6 +126,7 @@
 	(tensor-print stream object 0 (tensor-shape object) '())))
 
 (defun tensor-apply (function &rest tensors)
+	"Function that given one or two tensors of the same size, applies the given function to them."
 	(let ((tensors-values (mapcar #'(lambda (n) (tensor-values n)) tensors))
 		  (result (tensor-copy-simple (first tensors))))
 		(apply #'map-into (tensor-values result) function tensors-values)
@@ -129,6 +137,8 @@
 (defgeneric .- (tensor1 &optional tensor2))
 
 (defmethod .- (tensor1 &optional tensor2)
+	"Specialization of the generic function .- that decides what function to call, taking into account
+	 the number of given arguments."
 	(if (eq tensor2 nil)
 		(tensor-apply #'- tensor1)
 		(tensor-apply-dyadic #'- tensor1 tensor2)))
@@ -136,44 +146,46 @@
 (defgeneric ./ (tensor1 &optional tensor2))
 
 (defmethod ./ (tensor1 &optional tensor2)
+	"Specialization of the generic function ./ that decides what function to call, taking into account
+	 the number of given arguments."
 	(if (eq tensor2 nil)
-		(tensor-apply #'inverse tensor1)
+		(tensor-apply #'(lambda (n) (/ 1 n)) tensor1)
 		(tensor-apply-dyadic #'/ tensor1 tensor2)))
 
-(defun inverse (value)
-	(/ 1 value))
-
 (defun .! (tensor)
+	"Monadic function that given a tensor, returns a new tensor resulting from applying factorial to each of its elements."
 	(tensor-apply #'! tensor))
 
 (defun .sin (tensor)
+	"Monadic function that given a tensor, returns a new tensor resulting from applying sin to each of its elements."
 	(tensor-apply #'sin tensor))
 
 (defun .cos (tensor)
+	"Monadic function that given a tensor, returns a new tensor resulting from applying cosin to each of its elements."
 	(tensor-apply #'cos tensor))
 
 (defun .not (tensor)
-	(tensor-apply #'negation tensor))
-
-(defun negation (value)
-	(if (eq value 0)
-		1
-		0))
+	"Monadic function that given a tensor, returns a new tensor resulting from applying negation to each of its elements."
+	(tensor-apply #'(lambda (n) (if (eq n 0) 1 0)) tensor))
 
 (defun shape (tensor)
+	"Monadic function that given a tensor, returns a vector containing each of its dimension values."
 	(v (tensor-shape tensor)))
 
 (defun interval (value)
-	(let ((interval-lst '()))
-		(progn 
-			(dotimes (n value)
-				(setf interval-lst (append interval-lst (list (+ n 1)))))
-			(v interval-lst))))
+	"Monadic function that given a tensor, returns a new vector containing all the integer elements from zero up to the 
+	 tensor value."
+	(let ((interval-lst '())) 
+		(dotimes (n value)
+			(setf interval-lst (append interval-lst (list (+ n 1)))))
+	(v interval-lst)))
 
 ;;;;;;;;;;;;;;;; DYADIC FUNCTIONS ;;;;;;;;;;;;;;;;
 (defgeneric tensor-apply-dyadic (function tensor1 tensor2))
 
 (defmethod tensor-apply-dyadic (function (tensor1 tensor) (tensor2 tensor))
+	"Specialization of the generic function tensor-apply-dyadic, that performs the intended actions only if the arguments 
+	 are both tensors."
 	(assert (and (eq (tensor-rank tensor1) (tensor-rank tensor2))
 				 (equal (tensor-shape tensor1) (tensor-shape tensor2)))
 			(tensor1 tensor2)
@@ -181,51 +193,62 @@
 	(tensor-apply function tensor1 tensor2))
 
 (defmethod tensor-apply-dyadic (function (tensor1 scalar) (tensor2 tensor))
-	(let ((tensor-scalar (tensor-fill tensor2 tensor1)))
-		(tensor-apply function tensor-scalar tensor2)))
+	"Specialization of the generic function tensor-apply-dyadic, that performs the intended actions only if the 1st argument 
+	 is a scalar and the 2nd is a tensor."
+	(tensor-apply function (reshape (shape tensor2) tensor1) tensor2))
 
 (defmethod tensor-apply-dyadic (function (tensor1 tensor) (tensor2 scalar))
-	(let ((tensor-scalar (tensor-fill tensor1 tensor2)))
-		(tensor-apply function tensor1 tensor-scalar)))
+	"Specialization of the generic function tensor-apply-dyadic, that performs the intended actions only if the 1st argument 
+	 is a tensor and the 2nd is a scalar."
+	(tensor-apply function tensor1 (reshape (shape tensor1) tensor2)))
 
 (defun .+ (tensor1 tensor2)
+	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the sum to each of their elements."
 	(tensor-apply-dyadic #'+ tensor1 tensor2))
 
 (defun .* (tensor1 tensor2)
+	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the multiplication to each of their elements."
 	(tensor-apply-dyadic #'* tensor1 tensor2))
 
 (defun .// (tensor1 tensor2)
+	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the integer division to each of their elements."
 	(tensor-apply-dyadic #'floor tensor1 tensor2))
 
 (defun .% (tensor1 tensor2)
+	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the remainder of integer division to each of their elements."
 	(tensor-apply-dyadic #'rem tensor1 tensor2))
 
 (defun .< (tensor1 tensor2)
-	(tensor-convert-to-int
- (tensor-apply-dyadic #'< tensor1 tensor2)))
+	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the less than relation to each of their elements."
+	(tensor-convert-to-int (tensor-apply-dyadic #'< tensor1 tensor2)))
 
 (defun .> (tensor1 tensor2)
+	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the greater than relation to each of their elements."
 	(tensor-convert-to-int (tensor-apply-dyadic #'> tensor1 tensor2)))
 
 (defun .<= (tensor1 tensor2)
+	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the less than or equal relation to each of their elements."
 	(tensor-convert-to-int (tensor-apply-dyadic #'<= tensor1 tensor2)))
 
 (defun .>= (tensor1 tensor2)
+	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the greater than or equal relation to each of their elements."
 	(tensor-convert-to-int (tensor-apply-dyadic #'>= tensor1 tensor2)))
 
 (defun .= (tensor1 tensor2)
+	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the equal relation to each of their elements."
 	(tensor-convert-to-int (tensor-apply-dyadic #'= tensor1 tensor2)))
 
-;transformar inteiros para booleans
 (defun .or (tensor1 tensor2)
+	"Dyadic function that given two tensors, returns a new tensor resulting from applying the logical disjunction to each of their elements."
 	(tensor-convert-to-int (tensor-apply-dyadic #'(lambda (v1 v2) (or v1 v2)) (tensor-convert-to-bool tensor1) (tensor-convert-to-bool tensor2))))
 
-;transformar inteiros para booleans
 (defun .and (tensor1 tensor2)
+	"Dyadic function that given two tensors, returns a new tensor resulting from applying the logical conjunction to each of their elements."
 	(tensor-convert-to-int (tensor-apply-dyadic #'(lambda (v1 v2) (and v1 v2)) (tensor-convert-to-bool tensor1) (tensor-convert-to-bool tensor2))))
 
-; ver de escalares
 (defun reshape (tensor1 tensor2)
+	"Dyadic function that given two tensors, returns a new tensor whose shape is the one given in the 1st argument and contents are the ones from
+	 the 2nd argument."
 	(let* ((shape (array-to-list (tensor-values tensor1)))
 		   (size-tensor1 (reduce #'* shape))
 		   (result-tensor (tensor-construct-simple 'tensor (length shape) shape size-tensor1))
@@ -234,16 +257,9 @@
 			(setf (aref (tensor-values result-tensor) position) (aref (tensor-values tensor2) (rem position tensor2-size))))
 	result-tensor))
 
-(defun change-shape (shape value)
-	(let ((new-shape '()))
-		(progn 	
-			(dotimes (n (- (list-length shape) 1))
-				(setf new-shape (append new-shape (list (nth n shape)))))
-			(setf new-shape (append new-shape (list value))))
-	new-shape))
-
 ; adicionar assert que verifica tamanho do 1º tensor
 (defun select (tensor1 tensor2)
+	"Dyadic function that given two tensors, returns a new tensor whose last dimension elements were selected according to the 1st argument."
 	(labels (
 		(select-recursive (lst shape array-last-dim)
 			(let ((new-list '()))
@@ -255,7 +271,7 @@
 						(setf new-list (append new-list (list (select-recursive sub-list (cdr shape) array-last-dim))))))
 			new-list))
 		(apply-select (tensor1 tensor2)
-			(let* ((new-shape (change-shape (tensor-shape tensor2) (reduce #'+ (tensor-values tensor1))))
+			(let* ((new-shape (append (array-to-list (tensor-values (drop (s -1) (shape tensor2)))) (list (reduce #'+ (tensor-values tensor1)))))
 				   (result-tensor (tensor-construct-simple 'tensor (tensor-rank tensor2) new-shape (reduce #'* new-shape)))
 				   (tensor2-list (car (array-to-multi-list (tensor-values tensor2) 0 (tensor-shape tensor2)))))
 				(multi-list-to-array (select-recursive tensor2-list (tensor-shape tensor2) (tensor-values tensor1)) 0 new-shape (tensor-values result-tensor))
@@ -263,14 +279,15 @@
 	(apply-select tensor1 tensor2)))
 
 (defun calc-shape (shape1 shape2)
+	"Auxiliar function to calculate the new shape of a dropped tensor."
 	(let ((new-shape shape1))
 		(dotimes (n (list-length shape2))
 			(if (eq (nth n shape1) nil)
 				(setf new-shape (append new-shape (list 0)))))
 	(mapcar #'- shape2 (mapcar #'abs new-shape))))
 
-;verificar n-1 dims = 0
 (defun drop (tensor1 tensor2)
+	"Dyadic function that given two tensors, returns a new tensor whose dimensions have n less first/last elements according to the 1st argument."
 	(labels (
 		(drop-recursive (lst depth dropped-values)
 			(let ((new-list '()))
@@ -304,15 +321,22 @@
 (defgeneric catenate (tensor1 tensor2))
 
 (defmethod catenate ((tensor1 scalar) (tensor2 scalar))
+	"Specialization of generic function catenate, that performs the intended actions only if the arguments are both scalars."
 	(v (aref (tensor-values tensor1) 0) (aref (tensor-values tensor2) 0)))
 
 (defmethod catenate ((tensor1 tensor) (tensor2 scalar))
-	(reshape (v (append (array-to-list (tensor-values (drop (s -1) (shape tensor1)))) (list 1))) tensor2))
+	"Specialization of generic function catenate, that performs the intended actions only if the 1st argument is a tensor 
+	and the 2nd argument is a scalar."
+	(catenate tensor1 (reshape (v (append (array-to-list (tensor-values (drop (s -1) (shape tensor1)))) (list 1))) tensor2)))
 
 (defmethod catenate ((tensor1 scalar) (tensor2 tensor))
-	(reshape (v (append (array-to-list (tensor-values (drop (s -1) (shape tensor2)))) (list 1))) tensor1))
+	"Specialization of generic function catenate, that performs the intended actions only if the 1st argument is a scalar
+	and the 2nd argument is a tensor."
+	(catenate (reshape (v (append (array-to-list (tensor-values (drop (s -1) (shape tensor2)))) (list 1))) tensor1) tensor2))
 
 (defmethod catenate ((tensor1 tensor) (tensor2 tensor))
+	"Specialization of generic function catenate, that catenates two tensors along the last dimension only if they are both tensors
+	and their n-1 dimensions are equal and their ranks differ at most by one."
 	(labels (
 		(catenate-calc-shape (tensor1 tensor2 smaller-tensor which-smaller)
 			(let ((last-dimension 0))
@@ -340,7 +364,6 @@
 						(progn	(if (eq need-resize? t)
 									(setf smaller-tensor (reshape (v (append (tensor-shape smaller-tensor) (list 1))) smaller-tensor)))
 								(setf new-shape (catenate-calc-shape tensor1 tensor2 smaller-tensor which-tensor-smaller?))
-								(print new-shape)
 								(setf result-tensor (tensor-construct-simple 'tensor (tensor-rank tensor1) new-shape (reduce #'* new-shape)))
 								(cond	((eq which-tensor-smaller? 2) (multi-list-to-array (catenate-recursive (car (array-to-multi-list (tensor-values tensor1) 0 (tensor-shape tensor1))) (car (array-to-multi-list (tensor-values smaller-tensor) 0 (tensor-shape smaller-tensor))) new-shape) 0 new-shape (tensor-values result-tensor)))
 								  		((eq which-tensor-smaller? 1) (multi-list-to-array (catenate-recursive (car (array-to-multi-list (tensor-values smaller-tensor) 0 (tensor-shape smaller-tensor))) (car (array-to-multi-list (tensor-values tensor2) 0 (tensor-shape tensor2))) new-shape) 0 new-shape (tensor-values result-tensor)))
@@ -349,6 +372,8 @@
 	(apply-catenate tensor1 tensor2)))
 
 (defun member? (tensor1 tensor2)
+	"Dyadic function that given two tensors, returns a new tensor resulting from testing if each element of 1st tensor
+	 is present somewhere on the 2nd tensor."
 	(let ((result-tensor (tensor-copy-simple tensor1)))
 		(dotimes (position (tensor-size tensor1))
 				(if (> (funcall fold #'+ (.= (s (aref tensor1 position)) tensor2)) 0)
@@ -359,10 +384,13 @@
 ;;;;;;;;;;;;;;;; MONADIC OPERATORS ;;;;;;;;;;;;;;;
 
 (defun fold (function)
+	"Monadic operator that given a function, returns another function that applies the given one to successive elements of a given vector."
 	#'(lambda (tensor)
 		(reduce function (map 'array #'s (tensor-values tensor)))))
 
 (defun scan (function)
+	"Monadic operator that given a function, returns another function that applies the given one to increasingly larger subsets of the elements 
+	 of the given vector."
 	#'(lambda (tensor)
 		(let ((result-list '())
 			  (scalar-tensor (map 'array #'s (tensor-values tensor))))
@@ -371,6 +399,8 @@
 		(v result-list))))
 
 (defun outer-product (function)
+	"Monadic operator that given a function, returns another function that applies the given one to all combinations of elements of the 
+	 given tensors."
 	#'(lambda (tensor1 tensor2)
 		(let ((shape (append (tensor-shape tensor1) (tensor-shape tensor2)))
 			  (scalar-tensor (tensor-construct 'tensor (map 'array #'s (tensor-values tensor1)) (tensor-rank tensor1) (tensor-shape tensor1) (tensor-size tensor1)))
@@ -382,22 +412,27 @@
 ;;;;;;;;;;;;;;;; DYADIC OPERATORS  ;;;;;;;;;;;;;;;
 
 (defun inner-product (function1 function2)
-	#'(lambda (tensor1 tensor2)
-
-	))
+	#'(lambda (tensor1 tensor2)))
 
 ;;;;;;;;;;;;;;;;;;;; EXERCISES ;;;;;;;;;;;;;;;;;;;
 
 (defun tally (tensor)
+	"Function that given a tensor, returns a scalar with the number of elements of the given tensor."
 	(funcall (fold #'*) (shape tensor)))
 
 (defun rank (tensor)
-	(funcall (fold #'+ ) (.> (shape tensor) (s 0))))
+	"Function that given a tensor, returns a scalar with the number of dimensions of the given tensor."
+	(funcall (fold #'+ ) (.>= (shape tensor) (s 0))))
 
 (defun within (tensor scalar1 scalar2)
+	"Function that given a tensor and two scalars, returns a vector containing only the elements of the given tensor that
+	 are in the range between scalar1 and scalar2."
 	(select (.* (.>= tensor scalar1) (.<= tensor scalar2)) tensor))
 
 (defun ravel (tensor) 
+	"Function that given a tensor, returns a vector containing all the elements of the given tensor."
 	(reshape (tally tensor) tensor))
 
-(defun primes (scalar))
+(defun primes (scalar)
+	"Function that given a scalar, returns a vector containing all the prime elements from 2 up to the scalar, inclusive."
+	)
