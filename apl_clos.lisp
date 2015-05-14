@@ -173,12 +173,15 @@
 	(v (tensor-shape tensor)))
 
 (defun interval (value)
-	"Monadic function that given a tensor, returns a new vector containing all the integer elements from zero up to the 
-	 tensor value."
-	(let ((interval-lst '())) 
-		(dotimes (n value)
-			(setf interval-lst (append interval-lst (list (+ n 1)))))
-	(v interval-lst)))
+	"Monadic function that given an integer, returns a new vector containing all the integer elements from zero up to the 
+	 integer."
+	(iota (s value)))
+
+(defun iota (scalar)
+	(let ((iota-lst '())) 
+		(dotimes (n (tensor-values scalar))
+			(setf iota-lst (append iota-lst (list (+ n 1)))))
+	(v iota-lst)))
 
 ;;;;;;;;;;;;;;;; DYADIC FUNCTIONS ;;;;;;;;;;;;;;;;
 (defgeneric tensor-apply-dyadic (function tensor1 tensor2))
@@ -203,39 +206,39 @@
 	(tensor-apply function tensor1 (reshape (shape tensor1) tensor2)))
 
 (defun .+ (tensor1 tensor2)
-	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the sum to each of their elements."
+	"Dyadic function that given two tensors, returns a new tensor resulting from applying the sum to each of their elements."
 	(tensor-apply-dyadic #'+ tensor1 tensor2))
 
 (defun .* (tensor1 tensor2)
-	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the multiplication to each of their elements."
+	"Dyadic function that given two tensors, returns a new tensor resulting from applying the multiplication to each of their elements."
 	(tensor-apply-dyadic #'* tensor1 tensor2))
 
 (defun .// (tensor1 tensor2)
-	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the integer division to each of their elements."
+	"Dyadic function that given two tensors, returns a new tensor resulting from applying the integer division to each of their elements."
 	(tensor-apply-dyadic #'floor tensor1 tensor2))
 
 (defun .% (tensor1 tensor2)
-	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the remainder of integer division to each of their elements."
+	"Dyadic function that given two tensors, returns a new tensor resulting from applying the remainder of integer division to each of their elements."
 	(tensor-apply-dyadic #'rem tensor1 tensor2))
 
 (defun .< (tensor1 tensor2)
-	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the less than relation to each of their elements."
+	"Dyadic function that given two tensors, returns a new tensor resulting from applying the less than relation to each of their elements."
 	(tensor-convert-to-int (tensor-apply-dyadic #'< tensor1 tensor2)))
 
 (defun .> (tensor1 tensor2)
-	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the greater than relation to each of their elements."
+	"Dyadic function that given two tensors, returns a new tensor resulting from applying the greater than relation to each of their elements."
 	(tensor-convert-to-int (tensor-apply-dyadic #'> tensor1 tensor2)))
 
 (defun .<= (tensor1 tensor2)
-	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the less than or equal relation to each of their elements."
+	"Dyadic function that given two tensors, returns a new tensor resulting from applying the less than or equal relation to each of their elements."
 	(tensor-convert-to-int (tensor-apply-dyadic #'<= tensor1 tensor2)))
 
 (defun .>= (tensor1 tensor2)
-	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the greater than or equal relation to each of their elements."
+	"Dyadic function that given two tensors, returns a new tensor resulting from applying the greater than or equal relation to each of their elements."
 	(tensor-convert-to-int (tensor-apply-dyadic #'>= tensor1 tensor2)))
 
 (defun .= (tensor1 tensor2)
-	"Dyadic funcion that given two tensors, returns a new tensor resulting from applying the equal relation to each of their elements."
+	"Dyadic function that given two tensors, returns a new tensor resulting from applying the equal relation to each of their elements."
 	(tensor-convert-to-int (tensor-apply-dyadic #'= tensor1 tensor2)))
 
 (defun .or (tensor1 tensor2)
@@ -371,15 +374,15 @@
 			result-tensor)))
 	(apply-catenate tensor1 tensor2)))
 
-(defun member? (tensor1 tensor2)
-	"Dyadic function that given two tensors, returns a new tensor resulting from testing if each element of 1st tensor
-	 is present somewhere on the 2nd tensor."
-	(let ((result-tensor (tensor-copy-simple tensor1)))
-		(dotimes (position (tensor-size tensor1))
-				(if (> (funcall fold #'+ (.= (s (aref tensor1 position)) tensor2)) 0)
-					(setf (aref (tensor-values result-tensor) position) 1)
-					(setf (aref (tensor-values result-tensor) position) 0)))
-	result-tensor))
+ (defun member? (tensor1 tensor2)
+ 	"Dyadic function that given two tensors, returns a new tensor resulting from testing if each element of 1st tensor
+ 	 is present somewhere on the 2nd tensor."
+ 	(let ((result-tensor (tensor-copy-simple tensor1)))
+ 		(dotimes (position (tensor-size tensor1))
+ 				(if (> (reduce #'+ (tensor-values (.= (s (aref (tensor-values tensor1) position)) tensor2))) 0)
+ 					(setf (aref (tensor-values result-tensor) position) 1)
+ 					(setf (aref (tensor-values result-tensor) position) 0)))
+ 	result-tensor))
 
 ;;;;;;;;;;;;;;;; MONADIC OPERATORS ;;;;;;;;;;;;;;;
 
@@ -435,4 +438,5 @@
 
 (defun primes (scalar)
 	"Function that given a scalar, returns a vector containing all the prime elements from 2 up to the scalar, inclusive."
-	)
+	(let ((droppped-vector (drop (s 1) (interval ))))
+		 (select (.not (member? droppped-vector (funcall (outer-product #'.*) droppped-vector droppped-vector))) droppped-vector)))
