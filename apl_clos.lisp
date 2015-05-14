@@ -308,50 +308,52 @@
 			result-tensor)))
 	(apply-drop tensor1 tensor2)))
 
-(defun catenate-auxiliar (tensor source-shape)
-	(let ((new-shape '())
-		  (sub-shape (subseq source-shape 0 (- (list-length source-shape) 1))))
-		(progn
-			(if (typep tensor 'scalar)
-				(setf new-shape (append new-shape sub-shape)))
-			(setf new-shape (append new-shape (list 1)))
-			(reshape (v new-shape) tensor))))
-
-(defun list-recursion (lst elements shape)
-	(let ((new-list '()))	
-		(if (eq (list-length shape) 1)
-			(setf new-list (append (append new-list lst) elements))
-			(dolist (sub-list lst)
-				(setf new-list (append new-list (list-recursion sub-list elements (cdr shape))))))
-	new-list))
-
 (defgeneric catenate (tensor1 tensor2))
 
 (defmethod catenate ((tensor1 scalar) (tensor2 scalar))
 	(v (aref (tensor-values tensor1) 0) (aref (tensor-values tensor2) 0)))
 
+(defmethod catenate ((tensor1 tensor) (tensor2 scalar))
+	(reshape (v (append (array-to-list (tensor-values (drop (s -1) (shape tensor1)))) (list 1))) tensor2))
+
+(defmethod catenate ((tensor1 scalar) (tensor2 tensor))
+	(reshape (v (append (array-to-list (tensor-values (drop (s -1) (shape tensor2)))) (list 1))) tensor1))
+
 (defmethod catenate ((tensor1 tensor) (tensor2 tensor))
-	(assert (<= (abs (- (tensor-rank tensor1) (tensor-rank tensor2))) 1)
-			(tensor1 tensor2)
-			"ERROR: The difference between both tensor ranks is superior to one")
-	(print "ole")
-	)
-
-(defmethod catenate((tensor1 scalar) (tensor2 tensor))
-	(let ((new-tensor (catenate-auxiliar tensor1) (tensor-shape tensor2))
-		  (new-tensor-list (array-to-multi-list (tensor-values new-tensor) 0 (tensor-shape new-tensor))))
-		 (list-to-array (list-recursion new-tensor-list (list (tensor-values tensor1) (tensor-shape new-tensor)))		
-	)))
-
-(defmethod catenate((tensor1 tensor) (tensor2 scalar))
-	(let ((new-tensor (tensor-construct-simple 'tensor (tensor-rank tensor1) shape (reduce #'* shape)))))
-		(progn
-			(setf (nth (- (tensor-rank tensor1) 1) (tensor-shape tensor1)) (+ (nth (- (tensor-rank tensor1) 1) (tensor-shape tensor1)) 1))
-			(new-tensor-list (array-to-multi-list (tensor-values tensor1) 0 (tensor-shape tensor1)))))
-			
-
-		;(new-tensor-list (tensor-values new-tensor))))
-	;new-tensor))
+	(labels (
+		(catenate-calc-shape (tensor1 tensor2 smaller-tensor which-smaller)
+			(let ((last-dimension 0))
+				(cond	((eq which-smaller 0) 	(append (array-to-list (tensor-values (drop (s -1) (shape tensor1)))) (list (+ (car (last (tensor-shape tensor1))) (car (last (tensor-shape tensor2)))))))
+					 	((eq which-smaller 1) 	(append (array-to-list (tensor-values (drop (s -1) (shape tensor2)))) (list (+ (car (last (tensor-shape smaller-tensor))) (car (last (tensor-shape tensor2)))))))
+					  	(t 						(append (array-to-list (tensor-values (drop (s -1) (shape tensor1)))) (list (+ (car (last (tensor-shape tensor1))) (car (last (tensor-shape smaller-tensor))))))))))
+		(catenate-recursive (lst1 lst2 shape)
+			(let ((new-list '()))
+				(if (eq (list-length shape) 1)
+					(setf new-list (append new-list (append lst1 lst2)))
+					(loop for sub-list1 in lst1
+						  for sub-list2 in lst2
+						  do (setf new-list (append new-list (list (catenate-recursive sub-list1 sub-list2 (cdr shape)))))))
+			new-list))
+		(apply-catenate (tensor1 tensor2)
+			(let ((smaller-tensor nil)
+				  (which-tensor-smaller? 0)
+				  (need-resize? t)
+				  (result-tensor nil)
+				  (new-shape nil))
+				(progn	(cond	((eq (- (tensor-rank tensor1) (tensor-rank tensor2)) 1) (setf smaller-tensor tensor2) (setf which-tensor-smaller? 2))
+				  	      	 	((eq (- (tensor-rank tensor2) (tensor-rank tensor1)) 1) (setf smaller-tensor tensor1) (setf which-tensor-smaller? 1))
+				          	 	((eq (- (tensor-rank tensor2) (tensor-rank tensor1)) 0) (setf need-resize? nil))
+				          	 	(t (error "ERROR::CATENATE::RANK: The difference between the tensors' rank is greater than 1.")))
+						(progn	(if (eq need-resize? t)
+									(setf smaller-tensor (reshape (v (append (tensor-shape smaller-tensor) (list 1))) smaller-tensor)))
+								(setf new-shape (catenate-calc-shape tensor1 tensor2 smaller-tensor which-tensor-smaller?))
+								(print new-shape)
+								(setf result-tensor (tensor-construct-simple 'tensor (tensor-rank tensor1) new-shape (reduce #'* new-shape)))
+								(cond	((eq which-tensor-smaller? 2) (multi-list-to-array (catenate-recursive (car (array-to-multi-list (tensor-values tensor1) 0 (tensor-shape tensor1))) (car (array-to-multi-list (tensor-values smaller-tensor) 0 (tensor-shape smaller-tensor))) new-shape) 0 new-shape (tensor-values result-tensor)))
+								  		((eq which-tensor-smaller? 1) (multi-list-to-array (catenate-recursive (car (array-to-multi-list (tensor-values smaller-tensor) 0 (tensor-shape smaller-tensor))) (car (array-to-multi-list (tensor-values tensor2) 0 (tensor-shape tensor2))) new-shape) 0 new-shape (tensor-values result-tensor)))
+								  		(t (multi-list-to-array (catenate-recursive (car (array-to-multi-list (tensor-values tensor1) 0 (tensor-shape tensor1))) (car (array-to-multi-list (tensor-values tensor2) 0 (tensor-shape tensor2))) new-shape) 0 new-shape (tensor-values result-tensor))))))
+			result-tensor)))
+	(apply-catenate tensor1 tensor2)))
 
 (defun member? (tensor1 tensor2)
 	(let ((result-tensor (tensor-copy-simple tensor1)))
