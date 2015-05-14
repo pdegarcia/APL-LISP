@@ -60,6 +60,9 @@
 				(setf position (multi-list-to-array sub-list position (cdr shape) array))))
 	position))
 
+(defun list-to-array (lst)
+	(make-array (list-length lst) :initial-contents lst))
+
 (defun tensor-fill (tensor scalar)
 	(let ((tensor-scalar (tensor-construct-simple 'tensor (tensor-rank tensor) (tensor-shape tensor) (tensor-size tensor))))
 		(dotimes (n (tensor-size tensor))
@@ -93,30 +96,24 @@
 
 (defmethod print-object ((object tensor) stream)
 	(labels (
-		(last-iteration? (shape indexes)
+		(can-print? (shape indexes)
 			(if (null indexes)
 				t
 				(and (eql (- (car shape) 1) (car indexes)) 
-					 (last-iteration? (cdr shape) (cdr indexes)))))
-		(tensor-print-tester (indexes shape)
-			(if (eq indexes nil)
-		 		nil
-		 		(if (not (eq (- (car (last shape)) 1) (car (last indexes))))
-		 			t
-		 			nil)))
+					 (can-print? (cdr shape) (cdr indexes)))))
 		(tensor-print (stream object position shape indexes)
 			(let ((cur-dimension (list-length shape))
 				  (cur-dimension-value (first shape)))
 				(if (eq shape nil)
 					(progn 
 						(format stream "~a" (aref (tensor-values object) position))
-						(if (eq (tensor-print-tester indexes (tensor-shape object)) t)
+						(unless (can-print? (last (tensor-shape object)) (last indexes))
 							(format stream " "))
 						(incf position))
 					(progn
 						(dotimes (dim cur-dimension-value)
 							(setf position (tensor-print stream object position (cdr shape) (append indexes (list dim)))))
-						(unless (last-iteration? (tensor-shape object) indexes)
+						(unless (can-print? (tensor-shape object) indexes)
 							(format stream "~%"))))
 			position)))
 	(tensor-print stream object 0 (tensor-shape object) '())))
@@ -208,20 +205,16 @@
  (tensor-apply-dyadic #'< tensor1 tensor2)))
 
 (defun .> (tensor1 tensor2)
-	(tensor-convert-to-int
- (tensor-apply-dyadic #'> tensor1 tensor2)))
+	(tensor-convert-to-int (tensor-apply-dyadic #'> tensor1 tensor2)))
 
 (defun .<= (tensor1 tensor2)
-	(tensor-convert-to-int
- (tensor-apply-dyadic #'<= tensor1 tensor2)))
+	(tensor-convert-to-int (tensor-apply-dyadic #'<= tensor1 tensor2)))
 
 (defun .>= (tensor1 tensor2)
-	(tensor-convert-to-int
- (tensor-apply-dyadic #'>= tensor1 tensor2)))
+	(tensor-convert-to-int (tensor-apply-dyadic #'>= tensor1 tensor2)))
 
 (defun .= (tensor1 tensor2)
-	(tensor-convert-to-int
- (tensor-apply-dyadic #'= tensor1 tensor2)))
+	(tensor-convert-to-int (tensor-apply-dyadic #'= tensor1 tensor2)))
 
 ;transformar inteiros para booleans
 (defun .or (tensor1 tensor2)
@@ -367,34 +360,24 @@
 
 (defun fold (function)
 	#'(lambda (tensor)
-		(s (reduce function (tensor-values tensor)))))
+		(reduce function (map 'array #'s (tensor-values tensor)))))
 
 (defun scan (function)
 	#'(lambda (tensor)
-		(let ((tensor-list (array-to-list (tensor-values tensor)))
-			  (combination-list '())
-			  (result-tensor (tensor-construct-simple 'tensor (tensor-size tensor) (tensor-shape tensor) (tensor-size tensor)))
-			  (position 0))
-			(progn
-				(nreverse tensor-list)
-				(mapl #'(lambda (sub-list) (push sub-list combination-list)) tensor-list)
-				(dolist (combination combination-list)
-					(progn
-						(setf (aref (tensor-values result-tensor) position) (reduce function combination))
-						(incf position))))
-		result-tensor)))
+		(let ((result-list '())
+			  (scalar-tensor (map 'array #'s (tensor-values tensor))))
+			 (dotimes (position (tensor-size tensor))
+			 	(setf result-list (append result-list (list (aref (tensor-values (reduce function scalar-tensor :start 0 :end (+ position 1))) 0)))))
+		(v result-list))))
 
 (defun outer-product (function)
 	#'(lambda (tensor1 tensor2)
-		(let* ((shape (append (tensor-shape tensor1) (tensor-shape tensor2)))
-			   (result-tensor (tensor-construct-simple 'tensor (list-length shape) shape (reduce #'* shape)))
-			   (position 0))
-			(dotimes (i (tensor-size tensor1))
-				(dotimes (j (tensor-size tensor2))
-					(progn
-						(setf (aref (tensor-values result-tensor) position) (apply function (list (aref (tensor-values tensor1) i) (aref (tensor-values tensor2) j))))
-						(incf position))))
-		result-tensor)))
+		(let ((shape (append (tensor-shape tensor1) (tensor-shape tensor2)))
+			  (scalar-tensor (tensor-construct 'tensor (map 'array #'s (tensor-values tensor1)) (tensor-rank tensor1) (tensor-shape tensor1) (tensor-size tensor1)))
+			  (result-list '()))
+			  (dotimes (position (tensor-size tensor1))
+			  	(setf result-list (append result-list (array-to-list (tensor-values (apply function (list (aref (tensor-values scalar-tensor) position) tensor2)))))))
+		(tensor-construct 'tensor (list-to-array result-list) (list-length shape) shape (reduce #'* shape)))))
 
 ;;;;;;;;;;;;;;;; DYADIC OPERATORS  ;;;;;;;;;;;;;;;
 
