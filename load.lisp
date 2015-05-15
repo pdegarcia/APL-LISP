@@ -1,0 +1,1 @@
+(load "./src/apl_clos.lisp")
