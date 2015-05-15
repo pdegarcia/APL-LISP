@@ -178,8 +178,8 @@
 	(iota (s value)))
 
 (defun iota (scalar)
-	(let ((iota-lst '())) 
-		(dotimes (n (tensor-values scalar))
+	(let ((iota-lst '()))
+		(dotimes (n (aref (tensor-values scalar) 0))
 			(setf iota-lst (append iota-lst (list (+ n 1)))))
 	(v iota-lst)))
 
@@ -296,8 +296,10 @@
 			(let ((new-list '()))
 				(if (eq depth 0)
 					(if (> dropped-values 0)
-						(dotimes (n dropped-values)
-							(setf new-list (cdr lst)))
+						(progn 
+							(setf new-list lst)
+							(dotimes (n dropped-values)
+								(setf new-list (cdr new-list))))
 						(if (< dropped-values 0)
 							(dotimes (n (- (list-length lst) (abs dropped-values)))
 								(setf new-list (append new-list (list (nth n lst)))))
@@ -421,16 +423,16 @@
 
 (defun tally (tensor)
 	"Function that given a tensor, returns a scalar with the number of elements of the given tensor."
-	(funcall (fold #'*) (shape tensor)))
+	(funcall (fold #'.*) (shape tensor)))
 
 (defun rank (tensor)
 	"Function that given a tensor, returns a scalar with the number of dimensions of the given tensor."
-	(funcall (fold #'+ ) (.>= (shape tensor) (s 0))))
+	(funcall (fold #'.+ ) (.>= (shape tensor) (s 0))))
 
 (defun within (tensor scalar1 scalar2)
 	"Function that given a tensor and two scalars, returns a vector containing only the elements of the given tensor that
 	 are in the range between scalar1 and scalar2."
-	(select (.* (.>= tensor scalar1) (.<= tensor scalar2)) tensor))
+	(select (.and (.>= tensor scalar1) (.<= tensor scalar2)) tensor))
 
 (defun ravel (tensor) 
 	"Function that given a tensor, returns a vector containing all the elements of the given tensor."
@@ -438,5 +440,5 @@
 
 (defun primes (scalar)
 	"Function that given a scalar, returns a vector containing all the prime elements from 2 up to the scalar, inclusive."
-	(let ((droppped-vector (drop (s 1) (interval ))))
+	(let ((droppped-vector (drop (s 1) (interval (aref (tensor-values scalar) 0)))))
 		 (select (.not (member? droppped-vector (funcall (outer-product #'.*) droppped-vector droppped-vector))) droppped-vector)))
