@@ -39,7 +39,7 @@
 (defun array-to-multi-list (array position shape)
 	"Function that converts the given array to a nested list taking the given shape into account."
 	(let ((sub-list '())
-	      (cur-dimension (list-length shape))§
+	      (cur-dimension (list-length shape))
 	      (cur-dimension-value (first shape))
 		  (result-pair nil))
 		(if (eq cur-dimension 1)
@@ -109,20 +109,18 @@
 				(and (eql (- (car shape) 1) (car indexes)) 
 					 (can-print? (cdr shape) (cdr indexes)))))
 		(tensor-print (stream object position shape indexes)
-			(let ((cur-dimension (list-length shape))
-				  (cur-dimension-value (first shape)))
-				(if (eq shape nil)
-					(progn 
-						(format stream "~a" (aref (tensor-values object) position))
-						(unless (can-print? (last (tensor-shape object)) (last indexes))
-							(format stream " "))
-						(incf position))
-					(progn
-						(dotimes (dim cur-dimension-value)
-							(setf position (tensor-print stream object position (cdr shape) (append indexes (list dim)))))
-						(unless (can-print? (tensor-shape object) indexes)
+			(if (eq shape nil)
+				(progn 
+					(format stream "~a" (aref (tensor-values object) position))
+					(unless (can-print? (last (tensor-shape object)) (last indexes))
+						(format stream " "))
+					(incf position))
+				(progn
+					(dotimes (dim (first shape))
+						(setf position (tensor-print stream object position (cdr shape) (append indexes (list dim)))))
+					(unless (can-print? (tensor-shape object) indexes)
 							(format stream "~%"))))
-			position)))
+			position))
 	(tensor-print stream object 0 (tensor-shape object) '())))
 
 (defun tensor-apply (function &rest tensors)
@@ -260,7 +258,6 @@
 			(setf (aref (tensor-values result-tensor) position) (aref (tensor-values tensor2) (rem position tensor2-size))))
 	result-tensor))
 
-; adicionar assert que verifica tamanho do 1º tensor
 (defun select (tensor1 tensor2)
 	"Dyadic function that given two tensors, returns a new tensor whose last dimension elements were selected according to the 1st argument."
 	(labels (
@@ -344,10 +341,9 @@
 	and their n-1 dimensions are equal and their ranks differ at most by one."
 	(labels (
 		(catenate-calc-shape (tensor1 tensor2 smaller-tensor which-smaller)
-			(let ((last-dimension 0))
-				(cond	((eq which-smaller 0) 	(append (array-to-list (tensor-values (drop (s -1) (shape tensor1)))) (list (+ (car (last (tensor-shape tensor1))) (car (last (tensor-shape tensor2)))))))
-					 	((eq which-smaller 1) 	(append (array-to-list (tensor-values (drop (s -1) (shape tensor2)))) (list (+ (car (last (tensor-shape smaller-tensor))) (car (last (tensor-shape tensor2)))))))
-					  	(t 						(append (array-to-list (tensor-values (drop (s -1) (shape tensor1)))) (list (+ (car (last (tensor-shape tensor1))) (car (last (tensor-shape smaller-tensor))))))))))
+			(cond	((eq which-smaller 0) 	(append (array-to-list (tensor-values (drop (s -1) (shape tensor1)))) (list (+ (car (last (tensor-shape tensor1))) (car (last (tensor-shape tensor2)))))))
+				 	((eq which-smaller 1) 	(append (array-to-list (tensor-values (drop (s -1) (shape tensor2)))) (list (+ (car (last (tensor-shape smaller-tensor))) (car (last (tensor-shape tensor2)))))))
+				  	(t 						(append (array-to-list (tensor-values (drop (s -1) (shape tensor1)))) (list (+ (car (last (tensor-shape tensor1))) (car (last (tensor-shape smaller-tensor)))))))))
 		(catenate-recursive (lst1 lst2 shape)
 			(let ((new-list '()))
 				(if (eq (list-length shape) 1)
@@ -416,8 +412,6 @@
 
 ;;;;;;;;;;;;;;;; DYADIC OPERATORS  ;;;;;;;;;;;;;;;
 
-(defun inner-product (function1 function2)
-	#'(lambda (tensor1 tensor2)))
 
 ;;;;;;;;;;;;;;;;;;;; EXERCISES ;;;;;;;;;;;;;;;;;;;
 
@@ -440,5 +434,5 @@
 
 (defun primes (scalar)
 	"Function that given a scalar, returns a vector containing all the prime elements from 2 up to the scalar, inclusive."
-	(let ((droppped-vector (drop (s 1) (interval (aref (tensor-values scalar) 0)))))
+	(let ((droppped-vector (drop (s 1) (iota scalar))))
 		 (select (.not (member? droppped-vector (funcall (outer-product #'.*) droppped-vector droppped-vector))) droppped-vector)))
